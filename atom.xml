@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://xxyyue.github.io</id>
+    <title>xxyyue</title>
+    <updated>2023-07-22T07:17:23.898Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://xxyyue.github.io"/>
+    <link rel="self" href="https://xxyyue.github.io/atom.xml"/>
+    <subtitle>脚踏实地，仰望星空</subtitle>
+    <logo>https://xxyyue.github.io/images/avatar.png</logo>
+    <icon>https://xxyyue.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2023, xxyyue</rights>
+    <entry>
+        <title type="html"><![CDATA[论文阅读 Weaponizing Middleboxes for TCP Reflected Amplification]]></title>
+        <id>https://xxyyue.github.io/post/lun-wen-yue-du-weaponizing-middleboxes-for-tcp-reflected-amplification/</id>
+        <link href="https://xxyyue.github.io/post/lun-wen-yue-du-weaponizing-middleboxes-for-tcp-reflected-amplification/">
+        </link>
+        <updated>2023-03-08T04:33:04.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="概述">概述</h1>
+<p>这篇文章发表在USENIX security 2021上，获得了杰出论文奖，作者团队来自于马里兰大学，和科罗拉多大学博尔德分校。</p>
+<p>文章提出了一种基于TCP的反射放大攻击方法，利用了如防火墙、审查基础设施等中间盒子。</p>
+<p><strong>作者团队</strong></p>
+<p>一作kevin Bock是马里兰大学的博士，主攻网络安全，研究审查绕过。</p>
+<p>他的导师是马里兰大学的助理教授Dave Levin，研究主要基于对互联网安全进行测量以及改善，围绕网络公钥基础设施WebPKI、审查绕过、域名系统根服务器等课题进行研究。</p>
+<h1 id="背景反射放大攻击">背景：反射放大攻击</h1>
+<p>这篇文章提出了一种基于TCP的反射放大攻击，那我们先来回顾一下什么是反射放大攻击。</p>
+<p><strong>基于UDP的反射放大攻击</strong></p>
+<figure data-type="image" tabindex="1"><img src="https://xxyyue.github.io/post-images/1678192390441.jpg" alt="" loading="lazy"></figure>
+<p>DDoS攻击中的反射放大攻击，主要是攻击者利用DNS、NTP等UDP服务器，伪造受害者身份向这些服务器发送请求数据包，而这些服务器则会向受害者返回大量数据，以消耗受害者的带宽。</p>
+<p>由于不同服务根据请求返回的数据量大小，可以造成不同的放大倍数。</p>
+<p>这样的放大攻击能成功的关键，是利用了在无状态协议中，接收方不需要与发送方确认身份建立连接，只会根据源IP地址返回其请求的数据，这就使得攻击者可以伪造受害者身份去请求数据。</p>
+<p><strong>基于TCP的反射放大攻击</strong></p>
+<p>但是对于TCP服务器来说，就很难利用其进行反射放大攻击，因为在客户端向TCP服务器发起数据请求的时候，需要先通过三次握手建立连接。</p>
+<p>我们可以试想，若攻击者想要利用TCP服务器进行反射攻击，当他先用受害者地址向服务器发起SYN建立连接的请求，这时服务器会返回SYN+ACK给受害者以确认连接。若攻击者想要完成这次握手，它需要知道服务器发给受害者的SYN+ACK中的序列号，这个32位的序列号猜中的概率极小，且就算猜中，还得保证收到SYN+ACK的受害者不会回复RST给服务器以重置连接。这使得攻击者几乎不可能利用TCP服务器进行放大攻击。</p>
+<p>所以以往的基于TCP的反射攻击，一般就只利用了第一步，即发起SYN给服务器，服务器给受害者响应SYN+ACK，直到超时或收到RST为止。</p>
+<h1 id="威胁模型武器化中间盒子">威胁模型：武器化中间盒子</h1>
+<p>虽然三次握手可以有效防止利用TCP来进行流量放大，但随着互联网变得越来越复杂，研究发现大量网络中间盒子可以被滥用来实现基于TCP的放大攻击（将中间盒子作为放大器），并且具有较大的放大效果，甚至无穷大。</p>
+<p><strong>中间盒子</strong></p>
+<p>我们先来了解一下什么是中间盒子。</p>
+<p>当客户端向一台开放服务器发送数据包时，在这个数据包的传输路径上会存在很多跳的主机或是设备，这其中可能就有我们所说的中间盒子，它可能是一个防火墙、IDS、IPS或者国家审查基础设施，对路径上两个端主机之间的通信数据包进行监控、过滤、修改甚至注入。</p>
+<p>管理员可以通过防火墙来限制网络内的的主机所获取的内容，一旦中间盒子检测到数据包中包含不合法的内容，就可能丢弃该数据包、返回RST、或者针对不合法的HTTP请求注入block pages阻拦页面，这个注入block pages的行为是被攻击者利用的一个关键。</p>
+<p><strong>威胁模型</strong></p>
+<p>我们现在知道了中间盒子会对不合法的请求返回block pages，但这一点并没有解决TCP三次握手的问题，还不足以被利用来完成反射放大。</p>
+<p>将中间盒子武器化作为放大器，还利用了互联网的一个特性——路由不对称性。即 从A到B的数据包 和 从B到A的数据包所经过的路径可能不同，这就导致中间盒子可能并不能监测到一个完整的TCP连接/可能只能观察到一个方向上的数据包。</p>
+<p>而为了确保对网络内主机的限制，像审查设施这类中间盒子，需要通过一些不合规的配置来完成这点，比如只根据观察到的部分数据包来维护连接信息。</p>
+<p>那攻击者就可以利用这一点，通过巧妙地构造单方向上的数据包序列，并不需要与目标服务器实际完成三次握手，欺骗中间盒子让它以为完成了这样一个连接，同时数据包中包含不合法的内容，这样中间盒子就会对受害者返回block pages。</p>
+<h1 id="方法论">方法论</h1>
+<p>那我们知道了有这样一种造成TCP放大攻击的方法，作为攻击者要完成这样一个攻击的话，就还需要确定两件事——</p>
+<ol>
+<li>用什么样的包序列可以欺骗中间盒子，让它误以为连接已完成，并返回block pages</li>
+<li>对哪些目标IP发起请求，可能造成路径上的中间盒子返回block pages给受害者，这样的一种反射放大又可以达到具体多大的放大倍数</li>
+</ol>
+<p>为了回答这样两个问题，文章主要是通过自动检测工具geneva来得到用于欺骗中间盒子的包序列，又将这些包序列对全网IPv4地址进行扫描，来看看在去往哪些目标IP的路径上会出现中间盒子反射放大，放大倍数有多大。</p>
+<p>下面具体介绍这两个步骤——自动检测和全网扫描。</p>
+<h2 id="自动检测">自动检测</h2>
+<p><strong>实验设置</strong></p>
+<p>由于这种威胁模型的实质是由TCP实现不合规的中间盒子导致（并不是由于协议本身导致），所以并不能通过“自己设置中间盒子 然后输入各种包序列观察是否引发其产生block pages”这种方法，只能对真实世界中的中间盒子进行测量，看看真实世界中哪些不合规的中间盒子能作为反射放大器。</p>
+<p>为了得到能够欺骗（现实世界中的实现不合规的）中间盒子的包序列，作者选择采用训练自动化检测工具Geneva的方法。</p>
+<p>Geneva也是本文作者开发的，使用了一种遗传算法，本来是用于发现能够绕过审查设施的包序列（可以看作一个网络fuzzer）。Geneva通过五个包操作的组合：复制、篡改、切片、丢弃和发送，一系列这种的组合操作称为一个策略，Geneva测试了数十种这样的策略对现实世界中审查器的影响，通过一个适应性函数来评估这些策略，适应性函数设置为了一个评价绕过审查成功率的数字指标，这样经过一系列迭代就可以获得能够成功绕过审查的数据包序列。</p>
+<p>那此处可以通过类似的思想，修改其作为发现TCP放大攻击的检测器，只需修改以下两点</p>
+<ol>
+<li>将初始数据包序列设置为PSH+ACK上层协议设置为HTTP GET请求 并携带非法URL
+<ul>
+<li>客户端若发起HTTP GET请求，则会在三次握手建立连接后，发送一个携带应用层数据的PSH+ACK包</li>
+<li>因为需要引发middleboxes注入block pages</li>
+</ul>
+</li>
+<li>然后还需要将适应性函数设置为放大因子</li>
+</ol>
+<p>Geneva需要在实际网络上进行测试迭代，所以还需要路径上包含中间盒子的目标IP地址，我们可以从quack数据集中获得这些IP地址。</p>
+<blockquote>
+<p>Quack是一个审查测量平台，通过定期向全球服务器发送可能携带非法URL的HTTP请求，来检测中间盒子注入的审查响应</p>
+</blockquote>
+<p><strong>检测结果</strong></p>
+<p>迭代训练结束后，发现了其中184个目标IP是存在可被利用进行反射放大的中间盒子的。其中可以引发反射放大的包序列有如下五种，按照成功率进行排序</p>
+<figure data-type="image" tabindex="2"><img src="https://xxyyue.github.io/post-images/1678200971806.png" alt="" loading="lazy"></figure>
+<p>图中说明，SYN;PSH+ACK序列是最成功的欺骗策略，184个中间盒子有69.5%的会由于这个序列引发放大响应，放大倍数可达7455倍。</p>
+<p>之所以能够完成这么成功的放大，原因在于，从中间盒子的角度来看，这样的一个包序列看起来就像一个传统的TCP连接，只是缺少了服务器返回的SYN+ACK，而客户端返回的ACK完全可以被PSH+ACK替代。在之前我们提到，中间盒子需要能够应对路由不对称的情况，所以它没有看到服务器返回的SYN+ACK数据包，而仅仅根据这个序列判断其为连接建立成功，从而引发block pages是在意料之中的。</p>
+<p>此外，Geneva也检测到了一些附加的属性可能会影响同一个中间盒子的放大倍数，如TTL、窗口大小、TCP分段、FIN+CWR标志位等</p>
+<h2 id="全网扫描">全网扫描</h2>
+<p><strong>实验设置</strong></p>
+<p>现在我们通过Geneva发现了能引起中间盒子放大的包序列，接下来就可以通过对所有IPv4发起这些包序列，来看看哪些目标IP可以被用来做反射放大，最大的反射倍数可以达到多大。</p>
+<p>扫描工具使用的是Zmap，Zmap本身没有发送多个包序列进行扫描的能力，所以需要修改添加这个功能<br>
+然后针对Quack数据集里所提供的1052个非法URL，针对每个非法URL用不同的数据包序列进行扫描</p>
+<p><strong>扫描结果</strong></p>
+<p>Which strategies work best?</p>
+<p>Are these actually amplifiers?</p>
+<p>Are these middleboxes?</p>
+<p>What kind of packets do amplifiers send?</p>
+<h2 id="无限放大">无限放大</h2>
+<p>然而，在这些扫描结果中最值得关注的一点是，基于TCP的中间盒子放大攻击，放大倍数甚至可能达到10^8量级，那这么大近乎无穷的放大是哪里来的呢</p>
+<p>作者分析扫描结果发现了主要有两类原因</p>
+<ol>
+<li>一是受害者本身造成的</li>
+<li>二是由于路由环路造成的（往往是由于网络误配置导致</li>
+</ol>
+<h1 id="总结">总结</h1>
+<h2 id="impact">Impact</h2>
+<p>这篇文章所揭露的，让我们意识到，基于TCP的反射放大攻击可能造成比基于UDP的反射放大攻击更严重的危害，同时这种威胁几乎是很难从根本上解决的。因为导致的根本原因是中间盒子为了在丢失一个方向上的数据包时仍旧能够维护连接信息的不合规实现，如果要更正这个问题又会大大削弱中间盒子的能力。</p>
+<p>这篇文章于2021年8月发表，当时还没有在真实世界中检测到这种攻击。在2022年3月，Akamai的安全研究人员就检测到一系列利用中间盒子进行的TCP反射放大攻击，涉及到的行业有银行、旅游、游戏、媒体和网络托管等。峰值达到了 11Gbps，每秒 150 万个数据包 (Mpps)。</p>
+<h2 id="conclusion">Conclusion</h2>
+<ul>
+<li>present the first non-trivial TCP-based reflected amplification attacks</li>
+<li>introduce a method to discover this kind of attack</li>
+<li>scan the IPv4 Internet to determine how many IP addresses can be used as TCP-based amplifiers, and their amplification factor</li>
+<li>explain the root causes of mega-amplifiers —— infinite routing loops and “victim-sustained amplification”</li>
+</ul>
+<h2 id="my-opinion">My Opinion</h2>
+<p>文章提出了威胁模型，测量了攻击实施所需要知道的信息——可以引发block pages的包序列、路径上存在可以作为放大器的中间盒子的目标IP。</p>
+<p>但是文章并无法评估攻击者所能造成的实际危害大小。</p>
+<p>而且测得的不同包序列以及携带不同的域名所造成的放大倍数，仅仅是从一个扫描位置考虑的，并没有考虑不同的攻击者所在位置所可能带来的影响。</p>
+<h2 id="future-work">Future Work</h2>
+<p>在之后的一些研究工作中，文章【Routing Loops as Mega Amplifiers for DNS-Based DDoS Attacks】针对路由环路导致的放大攻击也做了新的假设和测量，发现不需要复杂的TCP包序列，一个简单的DNS请求，就可能因为路由环路，达到6.55亿的放大倍数。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[论文阅读 Detecting Peering Infrastructure Outages in the Wild]]></title>
+        <id>https://xxyyue.github.io/post/lun-wen-yue-du-detecting-peering-infrastructure-outages-in-the-wild/</id>
+        <link href="https://xxyyue.github.io/post/lun-wen-yue-du-detecting-peering-infrastructure-outages-in-the-wild/">
+        </link>
+        <updated>2022-10-14T06:12:02.000Z</updated>
+        <content type="html"><![CDATA[<figure data-type="image" tabindex="1"><img src="https://xxyyue.github.io/post-images/1665728742320.jpg" alt="" loading="lazy"></figure>
+<h1 id="概述">概述</h1>
+<p>从作者信息中可以看出这项工作是CAIDA发起的。</p>
+<p>文章通过一种 被动测量方式，利用了BGP的Community属性提供的信息，来检测、定位、追踪基础设施级别上的中断。</p>
+<h1 id="背景">背景</h1>
+<h2 id="prior-works">Prior Works</h2>
+<p>如今，我们的经济和我们的社会生活，都依赖于互联网的平稳和不间断的运行。虽然互联网整体上表现出了良好的弹性，但即使是短暂的中断Outage也会对一部分互联网用户产生重大影响。</p>
+<p>以往的工作对各种源头造成的中断进行了深入的研究，如 硬件\软件\配置错误导致的 router outage路由中断、optical layer outages（链路中断）、自然灾害、全球审查。</p>
+<p>而本文对 peering infrastructure 级别的中断进行了研究</p>
+<h2 id="互联网层级的扁平化">互联网层级的扁平化</h2>
+<p>问：什么是 peering infrastructure 呢？</p>
+<p>近年来，互联网基础设施发生了显著变化，互联网层级开始“扁平化”。“扁平化”意味着大多数互联网域间流量直接在边缘网络之间流动，不经过传输提供商（transit provider）。</p>
+<p>具体以下图说明：</p>
+<p>ISP可以从互联网管理机构申请到很多IP地址，然后一些机构和个人从某个ISP获取IP地址的使用权，并可通过该ISP连接到互联网，本地ISP给用户提供最直接的服务，本地ISP可以连接到地区ISP，也可以连接到主干ISP，这就形成了一个互联网层级结构。</p>
+<p>由于这样的等级结构，使得大多数的局部中断只会造成局部影响。</p>
+<p>为了更快地转发流量，IXP允许两个网络直接连接并交换分组，而不需要经过第三个网络来转发分组，这就使得网络结构变得扁平化。</p>
+<p>图中，主机A和主机B通过2个地区ISP连接起来了，就不必经过最上层的的主干ISP来转发分组。典型的IXP由一个或多个网络交换机组成。</p>
+<figure data-type="image" tabindex="2"><img src="https://xxyyue.github.io/post-images/1665732259374.jpg" alt="" loading="lazy"></figure>
+<p>答：像 IXPs 这样支持 <strong>直接对等连接</strong> 的第三方基础设施就是 peering infrastructure。</p>
+<h2 id="peering-infrastructure">Peering Infrastructure</h2>
+<p>本文讨论的基础设施主要包括两种：IXPs、Colocation Facilities</p>
+<ul>
+<li>Internet Exchange Points (IXPs)  —— 不同运营商之间为连通各自网络而建立的集中交换平台，一般由第三方中立运营</li>
+<li>Co-location Facilities (CFs) —— 主机托管为租户提供服务器或网络设备的托管，也支持了大量的直接对等连接</li>
+</ul>
+<p>二者都是互联网的重要基础设施，这样基础设施级别的中断往往会对大量网络造成影响，但是却很少有工作研究发生在这些基础设施中的中断。</p>
+<h1 id="目标">目标</h1>
+<p>文章想要解决的问题，是能够检测、定位、追踪infra-level的中断，以下我们用一个例子来明确达成这样一个目标要做的事情。</p>
+<figure data-type="image" tabindex="3"><img src="https://xxyyue.github.io/post-images/1665735389391.png" alt="" loading="lazy"></figure>
+<ul>
+<li>检测到发生了基础设施级别的中断
+<ul>
+<li>Challenge：依赖于AS级别的测量，我们是无法推断出infra级别的中断的，如图，Facility2故障时，AS1-&gt;AS2和AS2-&gt;AS4的路径发生了变化，但是它们的AS PATH却没有改变。</li>
+<li>Insight：本文希望通过BGP的community属性得到额外的信息，来判断路径中基础设施是否发生了变化。</li>
+</ul>
+</li>
+<li>定位发生中断的位置
+<ul>
+<li>Challenge：当发现infra-level的路径发生了变化，需要判断是路径中的哪一个基础设施发生了变化，如图，如果只观察AS2-&gt;AS4，是无法确定F2、IX1、F4哪个设施发生了中断。</li>
+<li>Insight：需要从多个VP进行观察多个路径，如图，F2从所有路径中消失了，但是IX1只从经过F2的路径中消失了，以此来推断是F2发生了中断。</li>
+</ul>
+</li>
+<li>追踪观察中断的持续时间及其影响
+<ul>
+<li>Insight：需要记录中断发生前的稳定的路径状态，然后持续监控，观察是否发生了路径偏离。</li>
+</ul>
+</li>
+</ul>
+<h1 id="具体方法及原理">具体方法及原理</h1>
+<p>（补充概括）</p>
+<h2 id="bgp-communit-dictionary">BGP Communit Dictionary</h2>
+<h4 id="bgp的community属性">BGP的Community属性</h4>
+<ul>
+<li>格式：16bit的ASN ：16bit的路由入口地址（共32bit）</li>
+<li>类型：inbound communities （当AS接收到一个前缀宣告时的入口接入点）、outbound communities （当AS宣告前缀时的出口接入点）</li>
+</ul>
+<p>通过Community属性我们可以结合AS PATH还原出一条基础设施级别的路径。</p>
+<p>如下图，BGP collector接收到了来自前缀184.84.242.0/24、2.21.67.0/24宣告的路由信息，其中AS subpath为13030 20940，第一个路由信息的Community属性为13030:51904，其中13013表示了AS13030已经应用了Community属性，51904表示这个路由信息是从Coresite LAX-1 facility收到的；同理，第二个路由信息有两个Community属性，前16bit的13030表示AS13030应用了Community属性，51702表示该路由信息来自于Telehouse East London facility，4006表示该路由信息来自于对等设施LINX IXP Juniper LAN。</p>
+<figure data-type="image" tabindex="4"><img src="https://xxyyue.github.io/post-images/1665738976530.jpg" alt="" loading="lazy"></figure>
+<h4 id="community-dictionary">Community Dictionary</h4>
+<p>越来越多的网络选择使用Community属性，这些community属性中编码了大量路由元数据，可惜的是BGP Community是唯一未规范化具体语义的BGP属性。因此我们需要每个Community它的解析标准，才能从其中提取出我们需要的信息。</p>
+<p>网络管理员会将他们网络的Community属性的设计规则发布在IRR记录中或他们的官方网站上，这些规则可能是一些没有统一规范的自然文本，因此文章开发了一个网络挖掘共工具，来爬取网站上的数据并解析。</p>
+<ul>
+<li>使用 Web Scraper 来从IRR记录和相关网站上爬取Community相关设计规则</li>
+<li>使用 Natural Language ToolKit 来解析提取出的文本信息，找到到infra-community相关的文本</li>
+<li>使用正则表达式来匹配包含 Community 值的子串，并使用Stanford的Named Entity Recognizer来标识命名实体</li>
+<li>得到的 Community Ditionary 中分了三种类型的命名实体：City-level、IXP、CF</li>
+<li>为了提高准确性，文章还搜索了PeeringDB、Euro-IX和IRR记录，来确定识别出的实体的网络类型</li>
+<li>使用 IXP Path Distribution 来扩充 Community Dictionary，IXP 路由服务器经常使用Community属性来帮助它连接的成员更好的将其前缀发布给其它成员</li>
+<li>截至于2016年12月，该 Community 字典包括了从 468 个自治域发布的 5248 communities，48个路由服务器，覆盖了72个国家的288个城市，172个IXPs和103个CFs</li>
+<li>为了保证最新，Community Dictionary每两周重新计算一次，并且总是使用对应时间段的字典进行路由处理</li>
+<li>为了验证自动生成的社区字典的正确性，我们将其与手动构造的字典（仅包括最多BGP PATH标记的25ASes）进行了比较，没有误报和漏报</li>
+</ul>
+<figure data-type="image" tabindex="5"><img src="https://xxyyue.github.io/post-images/1665800157083.png" alt="" loading="lazy"></figure>
+<h2 id="colocation-map">Colocation Map</h2>
+<p>在文章提取出的 Community 属性中，很大一部分是在city级别标注的，这个粒度太粗了，是无法在facility级别或ixp级别上确定中断的。</p>
+<p>为了更精确更细粒度地定位，文章使用了一个高分辨率的 co-location map 来补充 BGP community，它包括三种类型的互连：AS to Facilities、AS to IXPs、IXPs to Facilities</p>
+<p>如何构造这张 Colocation Map 呢？</p>
+<p>通过对 PeeringDB、DataCenterMap、operator websites 等数据源的挖掘，可以得到每个 facility 的具体地址位置，这样我们就知道哪些 facility、ixp 和 ASes 在我们的 Community Ditionary 标注的城市中运行。</p>
+<p>然后，合并每个数据源中列出的同一facility的租户，以增加 colocation map 的完整性。</p>
+<p>在 city-level 中断信号发生时使用构建的 colocation map，根据中断是不是在facility中发生，区分开同一城市中各ASes受到的影响（？？不太明白）。</p>
+<p>因此，我们可以精确定位中断发生的可能的facility-level或ixp-level的位置，并将中断检测功能的检测粒度精确到物理位置，而不仅仅是BGP Community中显式编码的位置。</p>
+<h2 id="detection-methodology">Detection Methodology</h2>
+<p>文章使用如下算法来检测和定位infra级别的中断</p>
+<figure data-type="image" tabindex="6"><img src="https://xxyyue.github.io/post-images/1665802489977.png" alt="" loading="lazy"></figure>
+<ul>
+<li>inputs：a stream of BGP data</li>
+</ul>
+<ol>
+<li>解析BGP Community，将BGP路径映射到经过的PoPs（Point of Presence —— city、IXP、CF）上</li>
+<li>我们过滤掉顺态路径，以记录一个稳态路径</li>
+<li>监测BGP UPDATE消息，来观察PoP-level上的路径偏离</li>
+<li>当足够多的PoP偏离出现了，我们将其视为一个outage signal（这个中断信号只能说明中断发生时这个PoP受到了影响，不能定位为此处发生了中断）</li>
+<li>根据受影响的ASes和它们的关联程度，来推断这个中断信号的类型PoP-level/AS-level/link-level</li>
+<li>若是由PoP outage导致的signal，需要先用colocation map来确定具体是哪一种基础设施，并用traceroute进行验证</li>
+</ol>
+<ul>
+<li>outputs：info of a PoP-level Outage</li>
+</ul>
+<h1 id="kepler系统">Kepler系统</h1>
+<figure data-type="image" tabindex="7"><img src="https://xxyyue.github.io/post-images/1665821082832.png" alt="" loading="lazy"></figure>
+<p>文章构建了一个kepler系统来实现上述算法，这个系统主要分为三个模块</p>
+<h2 id="input-moduledata-processing-输入模块数据预处理">Input Module：Data Processing 输入模块：数据预处理</h2>
+<p>生成了BGP Community Dictionary<br>
+生成了Co-location Map<br>
+对于每个带有Community属性的BGP UPDATE消息，使用Community 	Dictionary来推断经过的PoP<br>
+结合AS PATH得到了PoP-taged AS PATH</p>
+<h2 id="monitoring-moduleoutage-detection-检测模块中断检测">Monitoring Module：Outage Detection 检测模块：中断检测</h2>
+<p>持续监测community dictionary中所有的PoPs<br>
+周期性计算经过各个PoPs的稳定的路由路径<br>
+检查偏离基本稳定路径的PoPs改变<br>
+触发中断信号</p>
+<h2 id="outage-signal-investigation-信号调查模块确定中断的类型及具体位置">Outage Signal Investigation 信号调查模块：确定中断的类型及具体位置</h2>
+<p>考虑在一个时间间隔内的所有中断信号，并确定触发中断的类型</p>
+<ul>
+<li>link-level,  AS-level, operator-level, and PoP-level outages<br>
+对于PoP-level的事件，确定是哪一种基础设施，并定位具体物理位置<br>
+用traceroute验证后，追踪路径偏移到回复稳定路径的时间，来确定中断的持续时间</li>
+</ul>
+<h2 id="data-plane-analysis-数据平面分析验证检测到的中断">Data-Plane Analysis 数据平面分析：验证检测到的中断</h2>
+<p>kepler通过数据平面的分析来验证推断的PoP-level的中断：<br>
+初始化一系列稳态路径<br>
+当kepler检测到一个PoP outage时，它会识别通过该PoP互连的AS对的稳态路径<br>
+然后选择相同的源和目的地，并重复traceroute查询<br>
+如果持续通过PoP的基线路径的比例低于阈值Tfail，则确认中断并继续探测以确定中断的持续时间<br>
+否则，要么该中断推断为误报（假阳性），要么是在短时间内中断立即恢复了</p>
+<h1 id="评价-kepler-系统的表现">评价 Kepler 系统的表现</h1>
+<p>（待补充）</p>
+<h1 id="结果">结果</h1>
+<p>文章使用kepler系统来检测评估过去五年中peering infrastructure outages的影响</p>
+<h2 id="检测到的facility-outages">检测到的facility outages</h2>
+<p>文章对2012年到2016年的归档BGP stream和PeeringDB历史数据进行分析。</p>
+<figure data-type="image" tabindex="8"><img src="https://xxyyue.github.io/post-images/1665803666253.png" alt="" loading="lazy"></figure>
+<ul>
+<li>总共监测出了 159 个中断，其中103个中断发生在了87 个facilities上，56个中断发生在了41个 IXPs</li>
+<li>其中有76%的中断是没有通过邮件或者网站报道出来的</li>
+<li>53%的中断发生在欧洲，31%的中断发生在美国，剩下的分布在其它地区</li>
+<li>五年中检测到的中断数量并没有明显上升</li>
+</ul>
+<figure data-type="image" tabindex="9"><img src="https://xxyyue.github.io/post-images/1665803859511.png" alt="" loading="lazy"></figure>
+<ul>
+<li>中断持续时间的中位数为17分钟，40%的中断时间超过1小时</li>
+<li>IXP的中断持续时间比facility的要长。推测原因是 大多数facility中断是由于电力或光纤切断，而IXP中断还可能是由于软件或配置错误，这会使得恢复花费较多的时间</li>
+<li>（图没看懂，99.999%uptime意味着啥？？？）</li>
+</ul>
+<h2 id="案例研究">案例研究</h2>
+<p>为了展示kepler的探测能力，文章用三个中断案例的具体细节来说明</p>
+<ol>
+<li>The first one occurred at AMS-IX，a major IXP in Amsterdam, NL, at 2015-05-13.</li>
+</ol>
+<p>这个中断是在维护期间由于交换机环路引起的，下图绘制了三个不同聚合级别的路径变化占比。</p>
+<figure data-type="image" tabindex="10"><img src="https://xxyyue.github.io/post-images/1665814031292.jpg" alt="" loading="lazy"></figure>
+<p>这次中断导致IXP丢失了几乎所有线路和超过90%的交换流量约10分钟。流量恢复大约花了15分钟。在所有聚合级别中都可以清楚地看到该事件，但AMS-IX Communities标记的路径显示了最大的下降，表明了中断的实际来源。</p>
+<ol start="2">
+<li>The other two independent facility-level outages occurred in London.</li>
+</ol>
+<p>这两个中断分别发生在 the co-located London-IXP LINX、a third facility TH East，如下图所示</p>
+<figure data-type="image" tabindex="11"><img src="https://xxyyue.github.io/post-images/1665814522433.jpg" alt="" loading="lazy"></figure>
+<p>在A时刻，当第一次中断发生时，我们几乎看不到城市级别聚合的变化，而LINX和TH East都受到了影响。</p>
+<p>在B时刻，我们观察到了一个city-level信号，这不是由于facility中断导致的，而是由于一个主要一级AS的路径重路由导致。</p>
+<p>在C时刻，第二个中断发生了，我们可以看到TH East那条线有个大幅下降。</p>
+<p>开普勒正确地识别了A和C信号为PoP outage的信号，识别B信号为AS导致的信号，而不是推断LINX或TH East作为潜在的中断源。而后通过检查中断对远端ASes的影响，对这些ASes所关联的设施进行信号定位，如下图所示</p>
+<figure data-type="image" tabindex="12"><img src="https://xxyyue.github.io/post-images/1665815786486.jpg" alt="" loading="lazy"></figure>
+<p>很明显，A和C时刻，在 TC HEX8/9 和 TH North 的 ASes 的两个主要子集受到了影响，而伦敦其他设施的远端ASes(未描述)没有显示同时中断的迹象，这使我们能够正确地识别 TC HEX8/9 和 TH North 作为中断源。</p>
+<p>我们可以看到，在时刻B，只有一个AS受到影响。该图还体现了ASes处理中断的方式不同，一旦中断结束，一些会返回到他们的“稳定”路径，而另一些则继续使用新的路径。这组停机说明了开普勒消除设备停机信号来源歧义的能力。</p>
+<h2 id="主动探测">主动探测</h2>
+<p>文章希望体现在kepler系统中加入主动探测方式的好处，接下来以发生在AMS-IX的中断举例。</p>
+<figure data-type="image" tabindex="13"><img src="https://xxyyue.github.io/post-images/1665816538312.jpg" alt="" loading="lazy"></figure>
+<p>上图展示了中断发生时，BGP path的改变和traceroute path的改变，虽然总体路径变化趋势一致，但激活的<strong>备份路径不同</strong>。BGP Community主要由具有非常多样化对等连接的大型ASes提供，允许它们在远程ixp上激活可选对等链路；另一方面，大多数 traceroute 探测驻留在本地的ASes中，因此大多数，即75%的备用路由是通过transit 互连的。</p>
+<p>BGP路径重新收敛大约花了4个小时，直到95%的路径返回。大约5%的路径甚至在中断几天后都没有恢复。这种永久的路由变化要么是由于人工干预，要么是由于BGP决策过程倾向于使用最新的路径来打破束缚减少路由振荡。尽管85%的traceroute路径在一小时内返回AMS-IX，但仍有相当一部分继续穿过transit link。这些结果表明，中断对控制平面和数据平面路由路径的实际影响远远比中断的持续时间久。</p>
+<figure data-type="image" tabindex="14"><img src="https://xxyyue.github.io/post-images/1665817917281.jpg" alt="" loading="lazy"></figure>
+<p>Kepler还使用traceroute数据在往返时间(RTT)内评估中断的影响。虽然我们承认来自traceroute的rtt可能无法直接等同TCP所看到的rtt，但它们可以作为性能变化的指示。上图显示了通过AMS-IX的路径的RTT延迟的经验累积分布函数。</p>
+<p>文章区分了三个时间段：(i)中断前20分钟，(ii)中断期间，以及(iii)中断后20分钟，即操作恢复正常后10分钟。此外，我们将路径划分为在中断期间和之后使用AMS-IX和不使用AMS-IX 的路径。</p>
+<p>（？？？？不懂）在中断期间，重路由路径的中位数RTT上升超过100毫秒。对于不变的路径，中值RTT的增加是适度的，虽然有一些路径经历了显著的增加，但靠后的时间里没有增长那么多。在中断之后，这个RTT增加消失了。此外，在20分钟内返回AMS-IX的路径所经历的RTT与中断前大致相同。然而，由于在距离方面的次优路由，仍然使用替代互连的30%的路径 持续有大约40毫秒的rtt增加。</p>
+<h2 id="远端的影响">远端的影响</h2>
+<p>为了了解基础设施中断的影响，我们研究了前文提到的两次伦敦中断，分析这两次中断影响的ASes的位置。我们使用DRoP定位由Kepler的traceroute识别的受影响ASes的远端接口的ip。</p>
+<p>上图以公里为单位绘制了到伦敦的距离与受影响的ASes的数量的关系。令人惊讶的是，只有44%的远端接口也在伦敦。超过45%的接口在其他国家，超过20%的接口在欧洲以外。局部中断造成如此广泛影响的主要原因是远程对等连接的日益普及。</p>
+<h1 id="conclusion-comments">Conclusion &amp; Comments</h1>
+<p>link -&gt; AS -&gt; operator -&gt; PoP，中断信号产生后，根据影响的AS可以一级一级聚合来判断中断发生的等级</p>
+<p>PoP-level的outage检测，存在一个很大的问题，就是无法有一个标准的ground-truth来评判检测结果</p>
+<p>这种检测方法也无法确定中断发生的原因</p>
+<p>文章在技术手段上没有提出很大的创新，但是在工程上做出了很大的贡献，特别是前期数据准备阶段的工作</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Hello Gridea]]></title>
+        <id>https://xxyyue.github.io/post/hello-gridea/</id>
+        <link href="https://xxyyue.github.io/post/hello-gridea/">
+        </link>
+        <updated>2018-12-11T16:00:00.000Z</updated>
+        <summary type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
+✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
+]]></summary>
+        <content type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
+✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
+<!-- more -->
+<p><a href="https://github.com/getgridea/gridea">Github</a><br>
+<a href="https://gridea.dev/">Gridea 主页</a><br>
+<a href="https://fehey.com/">示例网站</a></p>
+<h2 id="特性">特性👇</h2>
+<p>📝  你可以使用最酷的 <strong>Markdown</strong> 语法，进行快速创作</p>
+<p>🌉  你可以给文章配上精美的封面图和在文章任意位置插入图片</p>
+<p>🏷️  你可以对文章进行标签分组</p>
+<p>📋  你可以自定义菜单，甚至可以创建外部链接菜单</p>
+<p>💻  你可以在 <strong>Windows</strong>，<strong>MacOS</strong> 或 <strong>Linux</strong> 设备上使用此客户端</p>
+<p>🌎  你可以使用 <strong>𝖦𝗂𝗍𝗁𝗎𝖻 𝖯𝖺𝗀𝖾𝗌</strong> 或 <strong>Coding Pages</strong> 向世界展示，未来将支持更多平台</p>
+<p>💬  你可以进行简单的配置，接入 <a href="https://github.com/gitalk/gitalk">Gitalk</a> 或 <a href="https://github.com/SukkaW/DisqusJS">DisqusJS</a> 评论系统</p>
+<p>🇬🇧  你可以使用<strong>中文简体</strong>或<strong>英语</strong></p>
+<p>🌁  你可以任意使用应用内默认主题或任意第三方主题，强大的主题自定义能力</p>
+<p>🖥  你可以自定义源文件夹，利用 OneDrive、百度网盘、iCloud、Dropbox 等进行多设备同步</p>
+<p>🌱 当然 <strong>Gridea</strong> 还很年轻，有很多不足，但请相信，它会不停向前 🏃</p>
+<p>未来，它一定会成为你离不开的伙伴</p>
+<p>尽情发挥你的才华吧！</p>
+<p>😘 Enjoy~</p>
+]]></content>
+    </entry>
+</feed>

@@ -1,0 +1,283 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>论文阅读 Weaponizing Middleboxes for TCP Reflected Amplification | xxyyue</title>
+<link rel="shortcut icon" href="https://xxyyue.github.io/favicon.ico?v=1690010233776">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://xxyyue.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="论文阅读 Weaponizing Middleboxes for TCP Reflected Amplification | xxyyue - Atom Feed" href="https://xxyyue.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="概述
+这篇文章发表在USENIX security 2021上，获得了杰出论文奖，作者团队来自于马里兰大学，和科罗拉多大学博尔德分校。
+文章提出了一种基于TCP的反射放大攻击方法，利用了如防火墙、审查基础设施等中间盒子。
+作者团队
+一作ke..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://xxyyue.github.io">
+  <img class="avatar" src="https://xxyyue.github.io/images/avatar.png?v=1690010233776" alt="">
+  </a>
+  <h1 class="site-title">
+    xxyyue
+  </h1>
+  <p class="site-description">
+    脚踏实地，仰望星空
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              论文阅读 Weaponizing Middleboxes for TCP Reflected Amplification
+            </h2>
+            <div class="post-info">
+              <span>
+                2023-03-08
+              </span>
+              <span>
+                12 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="概述">概述</h1>
+<p>这篇文章发表在USENIX security 2021上，获得了杰出论文奖，作者团队来自于马里兰大学，和科罗拉多大学博尔德分校。</p>
+<p>文章提出了一种基于TCP的反射放大攻击方法，利用了如防火墙、审查基础设施等中间盒子。</p>
+<p><strong>作者团队</strong></p>
+<p>一作kevin Bock是马里兰大学的博士，主攻网络安全，研究审查绕过。</p>
+<p>他的导师是马里兰大学的助理教授Dave Levin，研究主要基于对互联网安全进行测量以及改善，围绕网络公钥基础设施WebPKI、审查绕过、域名系统根服务器等课题进行研究。</p>
+<h1 id="背景反射放大攻击">背景：反射放大攻击</h1>
+<p>这篇文章提出了一种基于TCP的反射放大攻击，那我们先来回顾一下什么是反射放大攻击。</p>
+<p><strong>基于UDP的反射放大攻击</strong></p>
+<figure data-type="image" tabindex="1"><img src="https://xxyyue.github.io/post-images/1678192390441.jpg" alt="" loading="lazy"></figure>
+<p>DDoS攻击中的反射放大攻击，主要是攻击者利用DNS、NTP等UDP服务器，伪造受害者身份向这些服务器发送请求数据包，而这些服务器则会向受害者返回大量数据，以消耗受害者的带宽。</p>
+<p>由于不同服务根据请求返回的数据量大小，可以造成不同的放大倍数。</p>
+<p>这样的放大攻击能成功的关键，是利用了在无状态协议中，接收方不需要与发送方确认身份建立连接，只会根据源IP地址返回其请求的数据，这就使得攻击者可以伪造受害者身份去请求数据。</p>
+<p><strong>基于TCP的反射放大攻击</strong></p>
+<p>但是对于TCP服务器来说，就很难利用其进行反射放大攻击，因为在客户端向TCP服务器发起数据请求的时候，需要先通过三次握手建立连接。</p>
+<p>我们可以试想，若攻击者想要利用TCP服务器进行反射攻击，当他先用受害者地址向服务器发起SYN建立连接的请求，这时服务器会返回SYN+ACK给受害者以确认连接。若攻击者想要完成这次握手，它需要知道服务器发给受害者的SYN+ACK中的序列号，这个32位的序列号猜中的概率极小，且就算猜中，还得保证收到SYN+ACK的受害者不会回复RST给服务器以重置连接。这使得攻击者几乎不可能利用TCP服务器进行放大攻击。</p>
+<p>所以以往的基于TCP的反射攻击，一般就只利用了第一步，即发起SYN给服务器，服务器给受害者响应SYN+ACK，直到超时或收到RST为止。</p>
+<h1 id="威胁模型武器化中间盒子">威胁模型：武器化中间盒子</h1>
+<p>虽然三次握手可以有效防止利用TCP来进行流量放大，但随着互联网变得越来越复杂，研究发现大量网络中间盒子可以被滥用来实现基于TCP的放大攻击（将中间盒子作为放大器），并且具有较大的放大效果，甚至无穷大。</p>
+<p><strong>中间盒子</strong></p>
+<p>我们先来了解一下什么是中间盒子。</p>
+<p>当客户端向一台开放服务器发送数据包时，在这个数据包的传输路径上会存在很多跳的主机或是设备，这其中可能就有我们所说的中间盒子，它可能是一个防火墙、IDS、IPS或者国家审查基础设施，对路径上两个端主机之间的通信数据包进行监控、过滤、修改甚至注入。</p>
+<p>管理员可以通过防火墙来限制网络内的的主机所获取的内容，一旦中间盒子检测到数据包中包含不合法的内容，就可能丢弃该数据包、返回RST、或者针对不合法的HTTP请求注入block pages阻拦页面，这个注入block pages的行为是被攻击者利用的一个关键。</p>
+<p><strong>威胁模型</strong></p>
+<p>我们现在知道了中间盒子会对不合法的请求返回block pages，但这一点并没有解决TCP三次握手的问题，还不足以被利用来完成反射放大。</p>
+<p>将中间盒子武器化作为放大器，还利用了互联网的一个特性——路由不对称性。即 从A到B的数据包 和 从B到A的数据包所经过的路径可能不同，这就导致中间盒子可能并不能监测到一个完整的TCP连接/可能只能观察到一个方向上的数据包。</p>
+<p>而为了确保对网络内主机的限制，像审查设施这类中间盒子，需要通过一些不合规的配置来完成这点，比如只根据观察到的部分数据包来维护连接信息。</p>
+<p>那攻击者就可以利用这一点，通过巧妙地构造单方向上的数据包序列，并不需要与目标服务器实际完成三次握手，欺骗中间盒子让它以为完成了这样一个连接，同时数据包中包含不合法的内容，这样中间盒子就会对受害者返回block pages。</p>
+<h1 id="方法论">方法论</h1>
+<p>那我们知道了有这样一种造成TCP放大攻击的方法，作为攻击者要完成这样一个攻击的话，就还需要确定两件事——</p>
+<ol>
+<li>用什么样的包序列可以欺骗中间盒子，让它误以为连接已完成，并返回block pages</li>
+<li>对哪些目标IP发起请求，可能造成路径上的中间盒子返回block pages给受害者，这样的一种反射放大又可以达到具体多大的放大倍数</li>
+</ol>
+<p>为了回答这样两个问题，文章主要是通过自动检测工具geneva来得到用于欺骗中间盒子的包序列，又将这些包序列对全网IPv4地址进行扫描，来看看在去往哪些目标IP的路径上会出现中间盒子反射放大，放大倍数有多大。</p>
+<p>下面具体介绍这两个步骤——自动检测和全网扫描。</p>
+<h2 id="自动检测">自动检测</h2>
+<p><strong>实验设置</strong></p>
+<p>由于这种威胁模型的实质是由TCP实现不合规的中间盒子导致（并不是由于协议本身导致），所以并不能通过“自己设置中间盒子 然后输入各种包序列观察是否引发其产生block pages”这种方法，只能对真实世界中的中间盒子进行测量，看看真实世界中哪些不合规的中间盒子能作为反射放大器。</p>
+<p>为了得到能够欺骗（现实世界中的实现不合规的）中间盒子的包序列，作者选择采用训练自动化检测工具Geneva的方法。</p>
+<p>Geneva也是本文作者开发的，使用了一种遗传算法，本来是用于发现能够绕过审查设施的包序列（可以看作一个网络fuzzer）。Geneva通过五个包操作的组合：复制、篡改、切片、丢弃和发送，一系列这种的组合操作称为一个策略，Geneva测试了数十种这样的策略对现实世界中审查器的影响，通过一个适应性函数来评估这些策略，适应性函数设置为了一个评价绕过审查成功率的数字指标，这样经过一系列迭代就可以获得能够成功绕过审查的数据包序列。</p>
+<p>那此处可以通过类似的思想，修改其作为发现TCP放大攻击的检测器，只需修改以下两点</p>
+<ol>
+<li>将初始数据包序列设置为PSH+ACK上层协议设置为HTTP GET请求 并携带非法URL
+<ul>
+<li>客户端若发起HTTP GET请求，则会在三次握手建立连接后，发送一个携带应用层数据的PSH+ACK包</li>
+<li>因为需要引发middleboxes注入block pages</li>
+</ul>
+</li>
+<li>然后还需要将适应性函数设置为放大因子</li>
+</ol>
+<p>Geneva需要在实际网络上进行测试迭代，所以还需要路径上包含中间盒子的目标IP地址，我们可以从quack数据集中获得这些IP地址。</p>
+<blockquote>
+<p>Quack是一个审查测量平台，通过定期向全球服务器发送可能携带非法URL的HTTP请求，来检测中间盒子注入的审查响应</p>
+</blockquote>
+<p><strong>检测结果</strong></p>
+<p>迭代训练结束后，发现了其中184个目标IP是存在可被利用进行反射放大的中间盒子的。其中可以引发反射放大的包序列有如下五种，按照成功率进行排序</p>
+<figure data-type="image" tabindex="2"><img src="https://xxyyue.github.io/post-images/1678200971806.png" alt="" loading="lazy"></figure>
+<p>图中说明，SYN;PSH+ACK序列是最成功的欺骗策略，184个中间盒子有69.5%的会由于这个序列引发放大响应，放大倍数可达7455倍。</p>
+<p>之所以能够完成这么成功的放大，原因在于，从中间盒子的角度来看，这样的一个包序列看起来就像一个传统的TCP连接，只是缺少了服务器返回的SYN+ACK，而客户端返回的ACK完全可以被PSH+ACK替代。在之前我们提到，中间盒子需要能够应对路由不对称的情况，所以它没有看到服务器返回的SYN+ACK数据包，而仅仅根据这个序列判断其为连接建立成功，从而引发block pages是在意料之中的。</p>
+<p>此外，Geneva也检测到了一些附加的属性可能会影响同一个中间盒子的放大倍数，如TTL、窗口大小、TCP分段、FIN+CWR标志位等</p>
+<h2 id="全网扫描">全网扫描</h2>
+<p><strong>实验设置</strong></p>
+<p>现在我们通过Geneva发现了能引起中间盒子放大的包序列，接下来就可以通过对所有IPv4发起这些包序列，来看看哪些目标IP可以被用来做反射放大，最大的反射倍数可以达到多大。</p>
+<p>扫描工具使用的是Zmap，Zmap本身没有发送多个包序列进行扫描的能力，所以需要修改添加这个功能<br>
+然后针对Quack数据集里所提供的1052个非法URL，针对每个非法URL用不同的数据包序列进行扫描</p>
+<p><strong>扫描结果</strong></p>
+<p>Which strategies work best?</p>
+<p>Are these actually amplifiers?</p>
+<p>Are these middleboxes?</p>
+<p>What kind of packets do amplifiers send?</p>
+<h2 id="无限放大">无限放大</h2>
+<p>然而，在这些扫描结果中最值得关注的一点是，基于TCP的中间盒子放大攻击，放大倍数甚至可能达到10^8量级，那这么大近乎无穷的放大是哪里来的呢</p>
+<p>作者分析扫描结果发现了主要有两类原因</p>
+<ol>
+<li>一是受害者本身造成的</li>
+<li>二是由于路由环路造成的（往往是由于网络误配置导致</li>
+</ol>
+<h1 id="总结">总结</h1>
+<h2 id="impact">Impact</h2>
+<p>这篇文章所揭露的，让我们意识到，基于TCP的反射放大攻击可能造成比基于UDP的反射放大攻击更严重的危害，同时这种威胁几乎是很难从根本上解决的。因为导致的根本原因是中间盒子为了在丢失一个方向上的数据包时仍旧能够维护连接信息的不合规实现，如果要更正这个问题又会大大削弱中间盒子的能力。</p>
+<p>这篇文章于2021年8月发表，当时还没有在真实世界中检测到这种攻击。在2022年3月，Akamai的安全研究人员就检测到一系列利用中间盒子进行的TCP反射放大攻击，涉及到的行业有银行、旅游、游戏、媒体和网络托管等。峰值达到了 11Gbps，每秒 150 万个数据包 (Mpps)。</p>
+<h2 id="conclusion">Conclusion</h2>
+<ul>
+<li>present the first non-trivial TCP-based reflected amplification attacks</li>
+<li>introduce a method to discover this kind of attack</li>
+<li>scan the IPv4 Internet to determine how many IP addresses can be used as TCP-based amplifiers, and their amplification factor</li>
+<li>explain the root causes of mega-amplifiers —— infinite routing loops and “victim-sustained amplification”</li>
+</ul>
+<h2 id="my-opinion">My Opinion</h2>
+<p>文章提出了威胁模型，测量了攻击实施所需要知道的信息——可以引发block pages的包序列、路径上存在可以作为放大器的中间盒子的目标IP。</p>
+<p>但是文章并无法评估攻击者所能造成的实际危害大小。</p>
+<p>而且测得的不同包序列以及携带不同的域名所造成的放大倍数，仅仅是从一个扫描位置考虑的，并没有考虑不同的攻击者所在位置所可能带来的影响。</p>
+<h2 id="future-work">Future Work</h2>
+<p>在之后的一些研究工作中，文章【Routing Loops as Mega Amplifiers for DNS-Based DDoS Attacks】针对路由环路导致的放大攻击也做了新的假设和测量，发现不需要复杂的TCP包序列，一个简单的DNS请求，就可能因为路由环路，达到6.55亿的放大倍数。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E6%A6%82%E8%BF%B0">概述</a></li>
+<li><a href="#%E8%83%8C%E6%99%AF%E5%8F%8D%E5%B0%84%E6%94%BE%E5%A4%A7%E6%94%BB%E5%87%BB">背景：反射放大攻击</a></li>
+<li><a href="#%E5%A8%81%E8%83%81%E6%A8%A1%E5%9E%8B%E6%AD%A6%E5%99%A8%E5%8C%96%E4%B8%AD%E9%97%B4%E7%9B%92%E5%AD%90">威胁模型：武器化中间盒子</a></li>
+<li><a href="#%E6%96%B9%E6%B3%95%E8%AE%BA">方法论</a>
+<ul>
+<li><a href="#%E8%87%AA%E5%8A%A8%E6%A3%80%E6%B5%8B">自动检测</a></li>
+<li><a href="#%E5%85%A8%E7%BD%91%E6%89%AB%E6%8F%8F">全网扫描</a></li>
+<li><a href="#%E6%97%A0%E9%99%90%E6%94%BE%E5%A4%A7">无限放大</a></li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a>
+<ul>
+<li><a href="#impact">Impact</a></li>
+<li><a href="#conclusion">Conclusion</a></li>
+<li><a href="#my-opinion">My Opinion</a></li>
+<li><a href="#future-work">Future Work</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://xxyyue.github.io/post/lun-wen-yue-du-detecting-peering-infrastructure-outages-in-the-wild/">
+              <h3 class="post-title">
+                论文阅读 Detecting Peering Infrastructure Outages in the Wild
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  
+  <a class="rss" href="https://xxyyue.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
